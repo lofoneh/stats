@@ -14,7 +14,8 @@ function ProjectsPage() {
       filter={Route.useSearch()}
       dimension="project"
       title="Projects"
-      nameLabel="Project"
+      nameLabel="Project/Folder"
+      resultLabel="projects"
     />
   )
 }

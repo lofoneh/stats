@@ -1,5 +1,6 @@
 import type { Database } from "better-sqlite3"
-import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "../agents/registry"
+import { AGENTS, AGENT_IDS, isAgentId } from "../agents/registry"
+import type { AgentId } from "../agents/registry"
 import { ADAPTERS } from "../agents"
 import { canonicalProject, displayProject } from "../usage/project.server"
 import { getDb } from "../db/client.server"
@@ -129,7 +130,7 @@ export function getOverview(filter: StatsFilter): OverviewStats {
         MAX(estimated_tokens) AS hasEstimated,
         MIN(timestamp) AS first,
         MAX(timestamp) AS last
-       FROM usage_events ${where.sql}`,
+       FROM usage_events ${where.sql}`
     )
     .get(...where.params) as TokenSumRow & {
     events: number
@@ -207,7 +208,9 @@ function previousOverview(
 /** Sum of gaps under 30 minutes between consecutive events, plus a minimum minute per isolated event. */
 function activeTime(db: Database, where: WhereClause): number {
   const rows = db
-    .prepare(`SELECT timestamp FROM usage_events ${where.sql} ORDER BY timestamp`)
+    .prepare(
+      `SELECT timestamp FROM usage_events ${where.sql} ORDER BY timestamp`
+    )
     .all(...where.params) as { timestamp: number }[]
   let active = 0
   for (let i = 1; i < rows.length; i++) {
@@ -236,14 +239,23 @@ export function getTimeSeries(filter: StatsFilter): TimeSeries {
          SUM(CASE WHEN cost_usd IS NOT NULL THEN cost_usd ELSE 0 END) AS cost,
          COUNT(*) AS events
        FROM usage_events ${where.sql}
-       GROUP BY bucket, agent ORDER BY bucket`,
+       GROUP BY bucket, agent ORDER BY bucket`
     )
-    .all(...where.params) as { bucket: number; agent: string; tokens: number; cost: number; events: number }[]
+    .all(...where.params) as {
+    bucket: number
+    agent: string
+    tokens: number
+    cost: number
+    events: number
+  }[]
 
   const first = rows.length ? rows[0].bucket : null
   const last = rows.length ? rows[rows.length - 1].bucket : null
   const start = from !== null ? Math.trunc(from / bucketMs) * bucketMs : first
-  const end = to !== null ? Math.trunc((to - 1) / bucketMs) * bucketMs : Math.max(last ?? 0, Math.trunc(Date.now() / bucketMs) * bucketMs)
+  const end =
+    to !== null
+      ? Math.trunc((to - 1) / bucketMs) * bucketMs
+      : Math.max(last ?? 0, Math.trunc(Date.now() / bucketMs) * bucketMs)
   if (start === null || rows.length === 0) return { bucketMs, points: [] }
 
   const byBucket = new Map<number, (typeof rows)[number][]>()
@@ -264,7 +276,11 @@ export function getTimeSeries(filter: StatsFilter): TimeSeries {
       costUsd += row.cost
       events += row.events
       if (isAgentId(row.agent)) {
-        const slice = (byAgent[row.agent] ??= { tokens: 0, costUsd: 0, events: 0 })
+        const slice = (byAgent[row.agent] ??= {
+          tokens: 0,
+          costUsd: 0,
+          events: 0,
+        })
         slice.tokens += row.tokens
         slice.costUsd += row.cost
         slice.events += row.events
@@ -282,7 +298,10 @@ const DIMENSION_COLUMN: Record<BreakdownDimension, string> = {
   project: "project",
 }
 
-export function getBreakdown(filter: StatsFilter, dimension: BreakdownDimension): BreakdownRow[] {
+export function getBreakdown(
+  filter: StatsFilter,
+  dimension: BreakdownDimension
+): BreakdownRow[] {
   const db = getDb()
   const where = whereOf(filter)
   const column = DIMENSION_COLUMN[dimension]
@@ -297,12 +316,15 @@ export function getBreakdown(filter: StatsFilter, dimension: BreakdownDimension)
         MAX(timestamp) AS last,
         MAX(estimated_tokens) AS hasEstimated
        FROM usage_events ${where.sql}
-       GROUP BY key ORDER BY (SUM(input_tokens) + SUM(output_tokens) + SUM(cache_read_tokens) + SUM(cache_write_tokens) + SUM(reasoning_tokens)) DESC`,
+       GROUP BY key ORDER BY (SUM(input_tokens) + SUM(output_tokens) + SUM(cache_read_tokens) + SUM(cache_write_tokens) + SUM(reasoning_tokens)) DESC`
     )
     .all(...where.params) as BreakdownSumRow[]
   const merged = dimension === "project" ? mergeProjectRows(rows) : rows
-  const grandTotal = merged.reduce((sum, row) => sum + tokenTotalsOf(row).total, 0)
-  return merged.map(row => {
+  const grandTotal = merged.reduce(
+    (sum, row) => sum + tokenTotalsOf(row).total,
+    0
+  )
+  return merged.map((row) => {
     const tokens = tokenTotalsOf(row)
     return {
       key: row.key,
@@ -315,6 +337,10 @@ export function getBreakdown(filter: StatsFilter, dimension: BreakdownDimension)
       firstTimestamp: row.first,
       lastTimestamp: row.last,
       tokenShare: grandTotal > 0 ? tokens.total / grandTotal : 0,
+      cacheReadShare:
+        tokens.input + tokens.cacheRead > 0
+          ? tokens.cacheRead / (tokens.input + tokens.cacheRead)
+          : 0,
       hasEstimatedTokens: (row.hasEstimated ?? 0) > 0,
     }
   })
@@ -346,7 +372,9 @@ function mergeProjectRows(rows: BreakdownSumRow[]): BreakdownSumRow[] {
   const merged = new Map<string, BreakdownSumRow>()
   for (const row of rows) {
     const key =
-      row.key === "(unknown)" ? row.key : (canonicalProject(row.key) ?? "(unknown)")
+      row.key === "(unknown)"
+        ? row.key
+        : (canonicalProject(row.key) ?? "(unknown)")
     const prev = merged.get(key)
     if (!prev) {
       merged.set(key, { ...row, key })
@@ -366,16 +394,22 @@ function mergeProjectRows(rows: BreakdownSumRow[]): BreakdownSumRow[] {
     prev.hasEstimated = Math.max(prev.hasEstimated ?? 0, row.hasEstimated ?? 0)
   }
   return [...merged.values()].sort(
-    (a, b) => tokenTotalsOf(b).total - tokenTotalsOf(a).total,
+    (a, b) => tokenTotalsOf(b).total - tokenTotalsOf(a).total
   )
 }
 
-export function getSessions(filter: StatsFilter, page: number, pageSize: number): SessionPage {
+export function getSessions(
+  filter: StatsFilter,
+  page: number,
+  pageSize: number
+): SessionPage {
   const db = getDb()
   const where = whereOf(filter)
   const total = (
     db
-      .prepare(`SELECT COUNT(DISTINCT session_id) AS n FROM usage_events ${where.sql}`)
+      .prepare(
+        `SELECT COUNT(DISTINCT session_id) AS n FROM usage_events ${where.sql}`
+      )
       .get(...where.params) as { n: number }
   ).n
   const rows = db
@@ -389,7 +423,7 @@ export function getSessions(filter: StatsFilter, page: number, pageSize: number)
         MAX(estimated_tokens) AS hasEstimated,
         GROUP_CONCAT(DISTINCT model) AS models
        FROM usage_events ${where.sql}
-       GROUP BY session_id, agent ORDER BY last DESC LIMIT ? OFFSET ?`,
+       GROUP BY session_id, agent ORDER BY last DESC LIMIT ? OFFSET ?`
     )
     .all(...where.params, pageSize, (page - 1) * pageSize) as (TokenSumRow & {
     sessionId: string
@@ -404,21 +438,21 @@ export function getSessions(filter: StatsFilter, page: number, pageSize: number)
     models: string | null
   })[]
   const sessions: SessionSummary[] = rows
-    .filter(row => isAgentId(row.agent))
-    .map(row => ({
-    sessionId: row.sessionId,
-    // filter above guarantees this; TS cannot see across the two callbacks
-    agent: row.agent as AgentId,
-    project: displayProject(canonicalProject(row.project)),
-    models: row.models ? row.models.split(",").filter(Boolean) : [],
-    tokens: tokenTotalsOf(row),
-    pricedCostUsd: row.pricedCost ?? 0,
-    unpricedEventCount: row.unpricedEvents ?? 0,
-    events: row.events,
-    firstTimestamp: row.first,
-    lastTimestamp: row.last,
-    hasEstimatedTokens: (row.hasEstimated ?? 0) > 0,
-  }))
+    .filter((row) => isAgentId(row.agent))
+    .map((row) => ({
+      sessionId: row.sessionId,
+      // filter above guarantees this; TS cannot see across the two callbacks
+      agent: row.agent as AgentId,
+      project: displayProject(canonicalProject(row.project)),
+      models: row.models ? row.models.split(",").filter(Boolean) : [],
+      tokens: tokenTotalsOf(row),
+      pricedCostUsd: row.pricedCost ?? 0,
+      unpricedEventCount: row.unpricedEvents ?? 0,
+      events: row.events,
+      firstTimestamp: row.first,
+      lastTimestamp: row.last,
+      hasEstimatedTokens: (row.hasEstimated ?? 0) > 0,
+    }))
   return { sessions, total, page, pageSize }
 }
 
@@ -431,21 +465,31 @@ export function getAgentStatuses(): AgentStatus[] {
         SUM(warnings) AS warnings,
         MAX(last_synced_at) AS lastSynced,
         MAX(CASE WHEN error IS NOT NULL THEN error END) AS error
-       FROM sources GROUP BY agent`,
+       FROM sources GROUP BY agent`
     )
-    .all() as { agent: string; sources: number; warnings: number | null; lastSynced: number | null; error: string | null }[]
+    .all() as {
+    agent: string
+    sources: number
+    warnings: number | null
+    lastSynced: number | null
+    error: string | null
+  }[]
   const eventRows = db
-    .prepare("SELECT agent, COUNT(*) AS events FROM usage_events GROUP BY agent")
+    .prepare(
+      "SELECT agent, COUNT(*) AS events FROM usage_events GROUP BY agent"
+    )
     .all() as { agent: string; events: number }[]
   const eventsByAgent: Partial<Record<string, number>> = {}
   for (const row of eventRows) eventsByAgent[row.agent] = row.events
-  const sourcesByAgent: Partial<Record<string, (typeof sourceRows)[number]>> = {}
+  const sourcesByAgent: Partial<Record<string, (typeof sourceRows)[number]>> =
+    {}
   for (const row of sourceRows) sourcesByAgent[row.agent] = row
 
   const cacheBacked: Partial<Record<string, boolean>> = {}
-  for (const adapter of ADAPTERS) cacheBacked[adapter.id] = adapter.cacheBacked ?? false
+  for (const adapter of ADAPTERS)
+    cacheBacked[adapter.id] = adapter.cacheBacked ?? false
 
-  return AGENT_IDS.map(id => {
+  return AGENT_IDS.map((id) => {
     const meta = AGENTS[id]
     const source = sourcesByAgent[id]
     const events = eventsByAgent[id] ?? 0

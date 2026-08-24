@@ -5,6 +5,11 @@ const compact = new Intl.NumberFormat("en-US", {
 
 const plain = new Intl.NumberFormat("en-US")
 
+const oneDecimal = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
+
 const usd = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -21,6 +26,11 @@ export function formatCost(value: number): string {
 
 export function formatCount(value: number): string {
   return plain.format(value)
+}
+
+/** 0..1 rate with the precision used by metric tables. */
+export function formatRate(rate: number): string {
+  return `${oneDecimal.format(rate * 100)}%`
 }
 
 export function formatDuration(ms: number): string {

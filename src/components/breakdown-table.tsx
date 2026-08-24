@@ -13,10 +13,11 @@ import type {
 } from "@tanstack/react-table"
 import { ArrowLeftIcon, ArrowRightIcon, ChevronDownIcon } from "lucide-react"
 
-import type { BreakdownRow } from "@/lib/api/types"
+import type { BreakdownDimension, BreakdownRow } from "@/lib/api/types"
 import {
   formatCost,
   formatCount,
+  formatRate,
   formatRelative,
   formatShare,
   formatTokens,
@@ -38,11 +39,15 @@ const PER_PAGE = 10
  */
 export function BreakdownTable({
   rows,
+  dimension,
   nameLabel,
+  resultLabel,
   onSelect,
 }: {
   rows: BreakdownRow[]
+  dimension: BreakdownDimension
   nameLabel: string
+  resultLabel?: string
   /** Row click — filter by this row's key. "(unknown)" rows never fire. */
   onSelect?: (key: string) => void
 }) {
@@ -54,27 +59,85 @@ export function BreakdownTable({
     pageSize: PER_PAGE,
   })
 
-  const columns = React.useMemo<ColumnDef<BreakdownRow>[]>(
-    () => [
-      {
-        id: "label",
-        accessorFn: (row) => row.label.toLowerCase(),
-        header: nameLabel,
-        cell: ({ row }) => (
-          <span className="block max-w-64 truncate font-medium">
-            {row.original.label}
-            {row.original.hasEstimatedTokens ? (
-              <span
-                className="font-normal text-muted-foreground"
-                title="Includes estimated tokens"
-              >
-                {" "}
-                est.
-              </span>
-            ) : null}
-          </span>
-        ),
-      },
+  const columns = React.useMemo<ColumnDef<BreakdownRow>[]>(() => {
+    const labelColumn: ColumnDef<BreakdownRow> = {
+      id: "label",
+      accessorFn: (row) => row.label.toLowerCase(),
+      header: nameLabel,
+      cell: ({ row }) => (
+        <span className="block max-w-64 truncate font-medium">
+          {row.original.label}
+          {row.original.hasEstimatedTokens ? (
+            <span
+              className="font-normal text-muted-foreground"
+              title="Includes estimated tokens"
+            >
+              {" "}
+              est.
+            </span>
+          ) : null}
+        </span>
+      ),
+    }
+
+    if (dimension === "project") {
+      const maxRequests = Math.max(...rows.map((row) => row.events), 0)
+      const maxCost = Math.max(...rows.map((row) => row.pricedCostUsd), 0)
+      return [
+        labelColumn,
+        {
+          id: "requests",
+          accessorFn: (row) => row.events,
+          header: "Requests",
+          meta: { numeric: true },
+          cell: ({ row }) => (
+            <RelativeMetricCell
+              value={row.original.events}
+              max={maxRequests}
+              tone="requests"
+            >
+              {formatCount(row.original.events)}
+            </RelativeMetricCell>
+          ),
+        },
+        {
+          id: "cost",
+          accessorFn: (row) => row.pricedCostUsd,
+          header: "Cost",
+          meta: { numeric: true },
+          cell: ({ row }) => (
+            <RelativeMetricCell
+              value={row.original.pricedCostUsd}
+              max={maxCost}
+              tone="cost"
+            >
+              <CostCell row={row.original} showUnpriced={false} />
+            </RelativeMetricCell>
+          ),
+        },
+        {
+          id: "tokens",
+          accessorFn: (row) => row.tokens.total,
+          header: "Tokens",
+          meta: { numeric: true },
+          cell: ({ row }) => <TokensCell row={row.original} />,
+        },
+        {
+          id: "cacheRate",
+          accessorFn: (row) => row.cacheReadShare,
+          header: "Cache rate",
+          meta: { numeric: true },
+          cell: ({ row }) => (
+            <span title="Cache reads as a share of input and cache-read tokens">
+              {formatRate(row.original.cacheReadShare)}
+            </span>
+          ),
+        },
+      ]
+    }
+
+    return [
+      labelColumn,
       {
         id: "tokens",
         accessorFn: (row) => row.tokens.total,
@@ -116,9 +179,8 @@ export function BreakdownTable({
         header: "Share",
         cell: ({ row }) => <ShareBar share={row.original.tokenShare} />,
       },
-    ],
-    [nameLabel]
-  )
+    ]
+  }, [dimension, nameLabel, rows])
 
   const table = useReactTable({
     data: rows,
@@ -147,12 +209,18 @@ export function BreakdownTable({
           Total results
         </p>
         <p className="text-sm font-medium whitespace-nowrap">
-          {formatCount(rows.length)} {nameLabel.toLowerCase()}s
+          {formatCount(rows.length)}{" "}
+          {resultLabel ?? `${nameLabel.toLowerCase()}s`}
         </p>
       </div>
 
       <div className="mt-2 w-full overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-left">
+        <table
+          className={cn(
+            "w-full border-collapse text-left",
+            dimension === "project" ? "min-w-[700px]" : "min-w-[640px]"
+          )}
+        >
           <thead>
             <tr>
               {headers.map((header) => {
@@ -201,27 +269,34 @@ export function BreakdownTable({
               return (
                 <tr
                   key={row.id}
-                  onClick={selectable ? () => onSelect(row.original.key) : undefined}
-                  title={selectable ? `Filter by ${row.original.label}` : undefined}
+                  onClick={
+                    selectable ? () => onSelect(row.original.key) : undefined
+                  }
+                  title={
+                    selectable ? `Filter by ${row.original.label}` : undefined
+                  }
                   className={cn(
                     "border-b transition-colors duration-150 hover:bg-muted/50",
                     selectable && "cursor-pointer",
                     totalPages <= 1 && "last:border-transparent"
                   )}
                 >
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className={cn(
-                      "px-3 py-2.5 align-middle text-sm whitespace-nowrap",
-                      cell.column.columnDef.meta?.numeric &&
-                        "text-right font-mono text-[13px] tabular-nums",
-                      cell.column.id === "share" && "w-32"
-                    )}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
+                  {row.getVisibleCells().map((cell) => (
+                    <td
+                      key={cell.id}
+                      className={cn(
+                        "px-3 py-2.5 align-middle text-sm whitespace-nowrap",
+                        cell.column.columnDef.meta?.numeric &&
+                          "text-right font-mono text-[13px] tabular-nums",
+                        cell.column.id === "share" && "w-32"
+                      )}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      )}
+                    </td>
+                  ))}
                 </tr>
               )
             })}
@@ -261,16 +336,14 @@ function paginationRange(
   total: number
 ): (number | typeof DOTS)[] {
   // first + last + current + 2 siblings + 2 dots
-  if (total <= 7)
-    return Array.from({ length: total }, (_, index) => index + 1)
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1)
 
   const leftSibling = Math.max(current - 1, 1)
   const rightSibling = Math.min(current + 1, total)
   const showLeftDots = leftSibling > 2
   const showRightDots = rightSibling < total - 2
 
-  if (!showLeftDots && showRightDots)
-    return [1, 2, 3, 4, 5, DOTS, total]
+  if (!showLeftDots && showRightDots) return [1, 2, 3, 4, 5, DOTS, total]
   if (showLeftDots && !showRightDots)
     return [1, DOTS, total - 4, total - 3, total - 2, total - 1, total]
   return [1, DOTS, leftSibling, current, rightSibling, DOTS, total]
@@ -296,7 +369,10 @@ function Pagination({
   return (
     <nav
       aria-label="Pagination"
-      className={cn("flex w-full items-center justify-between gap-2", className)}
+      className={cn(
+        "flex w-full items-center justify-between gap-2",
+        className
+      )}
     >
       <Button
         variant="outline"
@@ -358,19 +434,60 @@ function TokensCell({ row }: { row: BreakdownRow }) {
   return <span title={detail}>{formatTokens(row.tokens.total)}</span>
 }
 
-function CostCell({ row }: { row: BreakdownRow }) {
-  if (row.pricedCostUsd === 0 && row.unpricedEventCount === row.events) {
+function CostCell({
+  row,
+  showUnpriced = true,
+}: {
+  row: BreakdownRow
+  showUnpriced?: boolean
+}) {
+  if (
+    showUnpriced &&
+    row.pricedCostUsd === 0 &&
+    row.unpricedEventCount === row.events
+  ) {
     return <span className="text-muted-foreground">unpriced</span>
   }
   return (
     <span>
       {formatCost(row.pricedCostUsd)}
-      {row.unpricedEventCount > 0 ? (
+      {showUnpriced && row.unpricedEventCount > 0 ? (
         <span className="text-muted-foreground">
           {" "}
           +{formatCount(row.unpricedEventCount)} unpriced
         </span>
       ) : null}
+    </span>
+  )
+}
+
+function RelativeMetricCell({
+  children,
+  value,
+  max,
+  tone,
+}: {
+  children: React.ReactNode
+  value: number
+  max: number
+  tone: "requests" | "cost"
+}) {
+  const width = max > 0 ? (value / max) * 100 : 0
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <span>{children}</span>
+      <span
+        aria-hidden="true"
+        className="block h-1 w-24 overflow-hidden rounded-full bg-muted"
+      >
+        <span
+          className={cn(
+            "block h-full rounded-full",
+            tone === "requests" ? "bg-chart-1" : "bg-chart-4"
+          )}
+          style={{ width: `${width}%` }}
+        />
+      </span>
     </span>
   )
 }
