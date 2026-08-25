@@ -7,13 +7,14 @@ import { fileSession, numberOf, recordOf, standardTokens, textOf, usageEvent } f
 interface MessageRow {
   id: string
   session_id: string
+  session_directory: string | null
   data: string
 }
 
 export const opencodeAdapter: AgentAdapter = {
   id: "opencode",
   label: "OpenCode",
-  version: 3,
+  version: 4,
   async *discover(context) {
     const data = context.env.XDG_DATA_HOME?.trim() || join(context.home, ".local", "share")
     const root = join(data, "opencode")
@@ -42,7 +43,14 @@ async function parseLegacy(source: UsageSource, context: ParseContext) {
 async function parseDatabase(source: UsageSource, context: ParseContext) {
   const db = new Database(source.path, { readonly: true, fileMustExist: true })
   try {
-    const rows = db.prepare("SELECT id, session_id, data FROM message").all() as MessageRow[]
+    // Modern databases carry a `session` table whose rows hold the workspace
+    // directory; older databases only have `message`. Query accordingly.
+    const hasSession = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session'").get()
+    const rows = (
+      hasSession
+        ? db.prepare("SELECT m.id, m.session_id, s.directory AS session_directory, m.data FROM message m LEFT JOIN session s ON s.id = m.session_id")
+        : db.prepare("SELECT id, session_id, NULL AS session_directory, data FROM message")
+    ).all() as MessageRow[]
     const events = []
     for (const row of rows) {
       let parsed: unknown
@@ -53,7 +61,7 @@ async function parseDatabase(source: UsageSource, context: ParseContext) {
         continue
       }
       const message = recordOf(parsed)
-      const event = message ? makeEvent(message, source, context, row.id, row.session_id) : null
+      const event = message ? makeEvent(message, source, context, row.id, row.session_id, row.session_directory) : null
       if (event) events.push(event)
     }
     return { events }
@@ -62,7 +70,14 @@ async function parseDatabase(source: UsageSource, context: ParseContext) {
   }
 }
 
-function makeEvent(message: Record<string, unknown>, source: UsageSource, context: ParseContext, identity: string, sessionId: string) {
+function makeEvent(
+  message: Record<string, unknown>,
+  source: UsageSource,
+  context: ParseContext,
+  identity: string,
+  sessionId: string,
+  sessionDirectory?: string | null,
+) {
   const tokens = recordOf(message.tokens)
   const time = recordOf(message.time)
   if (message.role !== "assistant" || !tokens || !time) return null
@@ -73,7 +88,12 @@ function makeEvent(message: Record<string, unknown>, source: UsageSource, contex
     provider: textOf(message.providerID),
     model: normalizeModel(textOf(message.modelID)),
     sessionId,
-    project: textOf(message.project),
+    // Issue #6: opencode stores the workspace directory on the session row
+    // (and historically in message.path.cwd), not on the message payload.
+    project:
+      textOf(sessionDirectory) ??
+      textOf(recordOf(message.path)?.cwd) ??
+      textOf(message.project),
     timestamp: time.created,
     timezone: context.timezone,
     tokens: standardTokens({
