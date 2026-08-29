@@ -38,7 +38,7 @@ interface JsonOptions {
   agent: AgentId
   source: UsageSource
   context: ParseContext
-  record: (value: JsonRecord, index: number, state: JsonState) => EventFields | null
+  record: (value: JsonRecord, index: number, state: JsonState) => EventFields | EventFields[] | null
 }
 
 export async function parseJsonl(options: JsonOptions): Promise<ParseOutput> {
@@ -53,7 +53,7 @@ export async function parseJsonl(options: JsonOptions): Promise<ParseOutput> {
       continue
     }
     const fields = options.record(row, index, state)
-    if (fields) events.push(makeUsageEvent(options.agent, options.source, options.context, fields, index))
+    appendEvents(options, fields, index, events)
   }
   return { events, cursor: read.cursor }
 }
@@ -72,9 +72,35 @@ export async function parseJson(
     const row = object(value)
     if (!row) continue
     const fields = options.record(row, index, state)
-    if (fields) events.push(makeUsageEvent(options.agent, options.source, options.context, fields, index))
+    appendEvents(options, fields, index, events)
   }
   return { events }
+}
+
+function fieldList(fields: EventFields | EventFields[] | null): EventFields[] {
+  if (fields == null) return []
+  return Array.isArray(fields) ? fields : [fields]
+}
+
+function appendEvents(
+  options: JsonOptions,
+  fields: EventFields | EventFields[] | null,
+  index: number,
+  events: UsageEvent[],
+): void {
+  const list = fieldList(fields)
+  const multi = Array.isArray(fields)
+  for (const [itemIndex, item] of list.entries()) {
+    events.push(
+      makeUsageEvent(
+        options.agent,
+        options.source,
+        options.context,
+        item,
+        multi ? `${index}:${itemIndex}` : index,
+      ),
+    )
+  }
 }
 
 export function object(value: unknown): JsonRecord | null {
@@ -137,7 +163,7 @@ export function makeUsageEvent(
   source: UsageSource,
   context: ParseContext,
   fields: EventFields,
-  index: number,
+  index: string | number,
 ): UsageEvent {
   const identity = fields.identity ?? `${fields.sessionId ?? sessionFromPath(source.path)}:${fields.timestamp}:${index}`
   const costUsd = fields.costUsd ?? null
@@ -166,13 +192,24 @@ export const numberOf = number
 export const fileSession = sessionFromPath
 export const standardTokens = usage
 
-export function encodedProject(path: string, rootName: string): string | null {
+export function encodedProject(
+  path: string,
+  rootName: string,
+  decodePercent = false,
+): string | null {
   const parts = path.split(/[\\/]/u)
   const root = parts.lastIndexOf(rootName)
   const encoded = root >= 0 ? parts[root + 1] : undefined
   if (!encoded || root + 1 >= parts.length - 1) return null
   if (encoded.startsWith("--") && encoded.endsWith("--")) {
     return `/${encoded.slice(2, -2).replaceAll("--", "/")}`
+  }
+  if (decodePercent && encoded.includes("%")) {
+    try {
+      return decodeURIComponent(encoded)
+    } catch {
+      return encoded
+    }
   }
   return encoded.startsWith("-") ? encoded.replaceAll("-", "/") : encoded
 }

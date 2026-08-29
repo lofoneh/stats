@@ -11,6 +11,7 @@ import { hermesAdapter } from "./hermes"
 import { kiroAdapter } from "./kiro"
 import { devinCliAdapter, kiloCliAdapter, mimoCodeAdapter, octofriendAdapter, zedAdapter } from "./sqlite-agents"
 import { zcodeAdapter } from "./zcode"
+import { parseSqliteUsage } from "./shared/sqlite"
 
 const context = (home: string, env: Record<string, string | undefined> = {}): DiscoveryContext => ({ platform: "linux", home, env, extraRoots: [] })
 const parseContext = { timezone: "UTC", warn: (_message: string) => {} }
@@ -94,6 +95,24 @@ describe("SQLite usage adapters", () => {
     db.close()
     const [source] = await sources(mimoCodeAdapter, context(home))
     expect((await mimoCodeAdapter.parse(source!, parseContext)).events[0]).toMatchObject({ project: "/work", durationMs: 1000, tokens: { input: 8, output: 4, cacheRead: 3, cacheWrite: 1, reasoning: 2 } })
+  })
+
+  it("skips Antigravity conversation databases that have no usage table", async () => {
+    const home = await mkdtemp(join(tmpdir(), "stats-ag-"))
+    const path = join(home, "gem", "antigravity-cli", "conversations", "one.db")
+    await mkdir(dirname(path), { recursive: true })
+    const db = new Database(path)
+    db.exec("CREATE TABLE steps (idx INTEGER PRIMARY KEY)")
+    db.close()
+    const [source] = await sources(antigravityCliAdapter, context(home, { GEMINI_CLI_HOME: join(home, "gem") }))
+    const output = await antigravityCliAdapter.parse(source, parseContext)
+    expect(output.events).toEqual([])
+    await expect(
+      parseSqliteUsage(source, parseContext, {
+        agent: "kilo-cli",
+        query: "SELECT * FROM usage_events",
+      }),
+    ).rejects.toThrow("no such table: usage_events")
   })
 
   it("discovers Antigravity, Kiro, and ZCode sources", async () => {

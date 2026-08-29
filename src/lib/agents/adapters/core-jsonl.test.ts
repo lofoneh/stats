@@ -72,7 +72,7 @@ describe("readJsonl", () => {
 describe("Claude-style adapters", () => {
   test("parses exact usage and does not retain transcript text", async () => {
     const home = await mkdtemp(join(tmpdir(), "stats-claude-"))
-    const path = join(home, ".claude", "projects", "-work-app", "session.jsonl")
+    const path = join(home, ".claude", "projects", "-work-100%-app", "session.jsonl")
     await fixture(path, [
       "{bad",
       {
@@ -98,6 +98,7 @@ describe("Claude-style adapters", () => {
     const ctx = parseContext()
     const result = await claudeCodeAdapter.parse(source!, ctx)
     expect(result.events[0]).toMatchObject({
+      project: "/work/100%/app",
       tokens: {
         input: 10,
         output: 4,

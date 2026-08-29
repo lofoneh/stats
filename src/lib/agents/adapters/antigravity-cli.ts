@@ -26,6 +26,7 @@ export const antigravityCliAdapter: AgentAdapter = {
   parse(source, context) {
     return parseSqliteUsage(source, context, {
       agent: "antigravity-cli",
+      allowMissingUsageEvents: true,
       query: `
         SELECT id, conversation_id AS session_id, timestamp, provider, model,
           project, input_tokens, output_tokens, cache_read_tokens,

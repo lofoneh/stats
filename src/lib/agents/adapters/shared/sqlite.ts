@@ -26,6 +26,8 @@ export interface SqliteSpec {
   query: string
   map?: (row: Record<string, unknown>) => SqliteUsageRow | null
   attribute?: (row: SqliteUsageRow) => AgentId
+  /** Empty parse when `usage_events` is absent. Off by default so schema mismatches stay errors. */
+  allowMissingUsageEvents?: boolean
 }
 
 export async function parseSqliteUsage(
@@ -35,8 +37,21 @@ export async function parseSqliteUsage(
 ): Promise<ParseOutput> {
   const db = new Database(source.path, { readonly: true, fileMustExist: true })
   try {
+    let rows: Record<string, unknown>[]
+    try {
+      rows = db.prepare(spec.query).all() as Record<string, unknown>[]
+    } catch (error) {
+      if (
+        spec.allowMissingUsageEvents &&
+        error instanceof Error &&
+        /^no such table: usage_events$/i.test(error.message)
+      ) {
+        return { events: [] }
+      }
+      throw error
+    }
     const events: UsageEvent[] = []
-    for (const value of db.prepare(spec.query).all() as Record<string, unknown>[]) {
+    for (const value of rows) {
       const row = spec.map ? spec.map(value) : (value as unknown as SqliteUsageRow)
       if (!row) {
         context.warn(`Skipped malformed ${spec.agent} SQLite row in ${source.path}`)
