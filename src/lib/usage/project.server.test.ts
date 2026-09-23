@@ -32,7 +32,8 @@ describe("canonicalProject", () => {
   })
 
   it("decodes a dash-encoded directory name", () => {
-    const encoded = `-${join(base, "telemetry.dev").slice(1).replaceAll("/", "-")}`
+    // Agents encode ":" and path separators as "-": /a/b -> -a-b, C:\a\b -> C--a-b.
+    const encoded = join(base, "telemetry.dev").replaceAll(/[:\\/]/gu, "-")
     expect(canonicalProject(encoded)).toBe(join(base, "telemetry.dev"))
   })
 
@@ -44,7 +45,7 @@ describe("canonicalProject", () => {
 
 describe("displayProject", () => {
   it("shortens the home prefix to ~", () => {
-    expect(displayProject(join(homedir(), "dev", "x"))).toBe("~/dev/x")
+    expect(displayProject(join(homedir(), "dev", "x"))).toBe(join("~", "dev", "x"))
     expect(displayProject("/opt/x")).toBe("/opt/x")
     expect(displayProject(null)).toBeNull()
   })

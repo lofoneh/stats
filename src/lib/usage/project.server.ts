@@ -6,6 +6,9 @@ import { homedir } from "node:os"
 //   /dev/telemetry.dev                    home-relative
 //   -Users-ephraim-dev-telemetry.dev      dash-encoded log directory name
 //   /dev/roadmap/sync                     dash-encoded name over-split on "-"
+//   C:\Users\ephraim\dev\telemetry.dev    raw Windows cwd
+//   C--Users-ephraim-dev-telemetry.dev    Claude Code log directory on Windows
+//   /C/Users-ephraim-dev-telemetry.dev    Pi and Oh My Pi log directory on Windows
 // canonicalProject maps all of them to one absolute path so the same project
 // never appears twice in breakdowns, sessions, or top lists. Resolution is
 // filesystem-backed: a candidate wins only when the directory exists.
@@ -27,16 +30,21 @@ export function canonicalProject(raw: string | null): string | null {
 /** Shortens a canonical path for display: /Users/me/dev/x -> ~/dev/x. */
 export function displayProject(project: string | null): string | null {
   if (project === null) return null
-  return project.startsWith(`${HOME}/`) ? `~${project.slice(HOME.length)}` : project
+  const underHome = project.startsWith(`${HOME}/`) || project.startsWith(`${HOME}\\`)
+  return underHome ? `~${project.slice(HOME.length)}` : project
 }
 
 function resolveProject(raw: string): string {
+  return resolvePosix(raw) ?? resolveDrive(raw) ?? raw
+}
+
+function resolvePosix(raw: string): string | null {
   const base = raw.startsWith("-")
     ? `/${raw.slice(1)}`
     : raw.startsWith("~")
       ? HOME + raw.slice(1)
       : raw
-  if (!base.startsWith("/")) return raw
+  if (!base.startsWith("/")) return null
   const decoded = base.replaceAll("-", "/")
   // Home-anchored candidates first: "/dev/x" almost always means "~/dev/x",
   // and system directories such as /dev exist and would win otherwise. A raw
@@ -49,7 +57,25 @@ function resolveProject(raw: string): string {
     const resolved = resolveSegments("", candidate.split("/").filter(Boolean), 0)
     if (resolved !== null) return resolved
   }
-  return raw
+  return null
+}
+
+const DRIVE_PATH = /^([A-Za-z]):[\\/](.*)$/u
+const DRIVE_ENCODED = [/^([A-Za-z])--(.*)$/u, /^\/([A-Za-z])\/(.*)$/u]
+
+/**
+ * Resolves a Windows drive path, raw or dash-encoded, to a native path such as
+ * C:\dev\x. Encoded names turn ":" and "\" into "-", so they get the same
+ * filesystem-backed segment repair as POSIX names.
+ */
+function resolveDrive(raw: string): string | null {
+  const direct = DRIVE_PATH.exec(raw)
+  const match = direct ?? DRIVE_ENCODED.map((pattern) => pattern.exec(raw)).find(Boolean)
+  if (!match) return null
+  const [, drive, rest] = match
+  const segments = rest.split(direct ? /[\\/]/u : /[\\/-]/u).filter(Boolean)
+  const resolved = resolveSegments(`${drive.toUpperCase()}:`, segments, 0)
+  return resolved === null ? null : resolved.replaceAll("/", "\\")
 }
 
 /**
