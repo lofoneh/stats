@@ -8,7 +8,7 @@ import { homedir } from "node:os"
 //   /dev/roadmap/sync                     dash-encoded name over-split on "-"
 //   C:\Users\ephraim\dev\telemetry.dev    raw Windows cwd
 //   C--Users-ephraim-dev-telemetry.dev    Claude Code log directory on Windows
-//   /C/Users-ephraim-dev-telemetry.dev    Pi and Oh My Pi log directory on Windows
+//   /C/Users-ephraim-dev-telemetry.dev    Pi and Oh My Pi log dir on Windows
 // canonicalProject maps all of them to one absolute path so the same project
 // never appears twice in breakdowns, sessions, or top lists. Resolution is
 // filesystem-backed: a candidate wins only when the directory exists.
@@ -30,7 +30,8 @@ export function canonicalProject(raw: string | null): string | null {
 /** Shortens a canonical path for display: /Users/me/dev/x -> ~/dev/x. */
 export function displayProject(project: string | null): string | null {
   if (project === null) return null
-  const underHome = project.startsWith(`${HOME}/`) || project.startsWith(`${HOME}\\`)
+  const underHome =
+    project.startsWith(`${HOME}/`) || project.startsWith(`${HOME}\\`)
   return underHome ? `~${project.slice(HOME.length)}` : project
 }
 
@@ -70,7 +71,8 @@ const DRIVE_ENCODED = [/^([A-Za-z])--(.*)$/u, /^\/([A-Za-z])\/(.*)$/u]
  */
 function resolveDrive(raw: string): string | null {
   const direct = DRIVE_PATH.exec(raw)
-  const match = direct ?? DRIVE_ENCODED.map((pattern) => pattern.exec(raw)).find(Boolean)
+  const match =
+    direct ?? DRIVE_ENCODED.map((pattern) => pattern.exec(raw)).find(Boolean)
   if (!match) return null
   const [, drive, rest] = match
   const segments = rest.split(direct ? /[\\/]/u : /[\\/-]/u).filter(Boolean)

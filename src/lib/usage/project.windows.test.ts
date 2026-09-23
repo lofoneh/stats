@@ -36,17 +36,23 @@ const { canonicalProject, displayProject } = await import("./project.server")
 
 describe("canonicalProject on Windows paths", () => {
   it("keeps a raw drive path that exists", () => {
-    expect(canonicalProject("C:\\collabs\\oss\\telemetry")).toBe("C:\\collabs\\oss\\telemetry")
-    expect(canonicalProject("C:/collabs/oss/telemetry")).toBe("C:\\collabs\\oss\\telemetry")
+    expect(canonicalProject("C:\\collabs\\oss\\telemetry")).toBe(
+      "C:\\collabs\\oss\\telemetry"
+    )
+    expect(canonicalProject("C:/collabs/oss/telemetry")).toBe(
+      "C:\\collabs\\oss\\telemetry"
+    )
   })
 
   it("decodes a Claude Code project directory name", () => {
-    expect(canonicalProject("C--collabs-oss-telemetry")).toBe("C:\\collabs\\oss\\telemetry")
+    expect(canonicalProject("C--collabs-oss-telemetry")).toBe(
+      "C:\\collabs\\oss\\telemetry"
+    )
   })
 
   it("decodes an Oh My Pi or Pi session directory name", () => {
     expect(canonicalProject("/C/collabs-win-transport-services")).toBe(
-      "C:\\collabs\\win-transport-services",
+      "C:\\collabs\\win-transport-services"
     )
   })
 
@@ -57,12 +63,14 @@ describe("canonicalProject on Windows paths", () => {
       "/C/collabs-win-transport-services",
     ]
     expect(new Set(shapes.map(canonicalProject))).toEqual(
-      new Set(["C:\\collabs\\win-transport-services"]),
+      new Set(["C:\\collabs\\win-transport-services"])
     )
   })
 
   it("repairs dash-encoded names on other drives", () => {
-    expect(canonicalProject("D--work-roadmap-sync")).toBe("D:\\work\\roadmap-sync")
+    expect(canonicalProject("D--work-roadmap-sync")).toBe(
+      "D:\\work\\roadmap-sync"
+    )
   })
 
   it("keeps an unresolvable drive path unchanged", () => {
@@ -73,7 +81,11 @@ describe("canonicalProject on Windows paths", () => {
 
 describe("displayProject on Windows paths", () => {
   it("shortens the home prefix to ~", () => {
-    expect(displayProject("C:\\Users\\me\\dev\\telemetry.dev")).toBe("~\\dev\\telemetry.dev")
-    expect(displayProject("C:\\collabs\\oss\\telemetry")).toBe("C:\\collabs\\oss\\telemetry")
+    expect(displayProject("C:\\Users\\me\\dev\\telemetry.dev")).toBe(
+      "~\\dev\\telemetry.dev"
+    )
+    expect(displayProject("C:\\collabs\\oss\\telemetry")).toBe(
+      "C:\\collabs\\oss\\telemetry"
+    )
   })
 })
