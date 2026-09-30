@@ -37,6 +37,42 @@ describe("OpenCode", () => {
     new Database(path).close()
   })
 
+  test("resolves project from the session row directory", async () => {
+    const home = await mkdtemp(join(tmpdir(), "stats-opencode-project-"))
+    const path = join(home, ".local", "share", "opencode", "opencode.db")
+    await mkdir(dirname(path), { recursive: true })
+    const db = new Database(path)
+    db.exec("CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT)")
+    db.exec("CREATE TABLE message (id TEXT, session_id TEXT, data TEXT)")
+    db.prepare("INSERT INTO session VALUES (?, ?)").run("ses-1", "/home/dev/app")
+    db.prepare("INSERT INTO message VALUES (?, ?, ?)").run(
+      "msg-1",
+      "ses-1",
+      JSON.stringify({ ...message, path: { cwd: "/elsewhere" }, cost: 0 }),
+    )
+    db.close()
+
+    const data = join(home, ".local", "share")
+    const source = (await discover(home, { XDG_DATA_HOME: data })).find((item) => item.kind === "sqlite")!
+    const event = (await opencodeAdapter.parse(source, parseContext())).events[0]
+    expect(event?.project).toBe("/home/dev/app")
+  })
+
+  test("falls back to message cwd when the session row is missing", async () => {
+    const home = await mkdtemp(join(tmpdir(), "stats-opencode-cwd-"))
+    const path = join(home, ".local", "share", "opencode", "opencode.db")
+    await mkdir(dirname(path), { recursive: true })
+    const db = new Database(path)
+    db.exec("CREATE TABLE message (id TEXT, session_id TEXT, data TEXT)")
+    db.prepare("INSERT INTO message VALUES (?, ?, ?)").run("msg-1", "session", JSON.stringify({ ...message, path: { cwd: "/work/stuff" } }))
+    db.close()
+
+    const data = join(home, ".local", "share")
+    const source = (await discover(home, { XDG_DATA_HOME: data })).find((item) => item.kind === "sqlite")!
+    const event = (await opencodeAdapter.parse(source, parseContext())).events[0]
+    expect(event?.project).toBe("/work/stuff")
+  })
+
   test("legacy JSON uses the same stable message dedup key", async () => {
     const home = await mkdtemp(join(tmpdir(), "stats-opencode-legacy-"))
     const path = join(home, ".local", "share", "opencode", "storage", "message", "session", "msg-1.json")

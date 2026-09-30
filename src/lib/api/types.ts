@@ -2,7 +2,14 @@ import type { AgentId } from "../agents/registry"
 
 export type TimeRange = "24h" | "7d" | "30d" | "90d" | "year" | "all"
 
-export const TIME_RANGES: TimeRange[] = ["24h", "7d", "30d", "90d", "year", "all"]
+export const TIME_RANGES: TimeRange[] = [
+  "24h",
+  "7d",
+  "30d",
+  "90d",
+  "year",
+  "all",
+]
 
 /** Filters shared by every analytic endpoint, carried in the URL. */
 export interface StatsFilter {
@@ -88,6 +95,8 @@ export interface BreakdownRow {
   lastTimestamp: number
   /** Share of total tokens, 0..1. */
   tokenShare: number
+  /** Cache reads as a share of input plus cache-read tokens, 0..1. */
+  cacheReadShare: number
   hasEstimatedTokens: boolean
 }
 

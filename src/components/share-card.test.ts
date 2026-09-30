@@ -81,6 +81,7 @@ function model(label: string, total: number): BreakdownRow {
     firstTimestamp: Date.UTC(2026, 6, 1),
     lastTimestamp: Date.UTC(2026, 6, 30),
     tokenShare: total / 100,
+    cacheReadShare: 0,
     hasEstimatedTokens: false,
   }
 }

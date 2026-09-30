@@ -11,7 +11,9 @@ import { BreakdownTable } from "@/components/breakdown-table"
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/states"
 
 /** Which filter list a clicked row's key belongs to. */
-const FILTER_KEY: Partial<Record<BreakdownDimension, "agents" | "models" | "projects">> = {
+const FILTER_KEY: Partial<
+  Record<BreakdownDimension, "agents" | "models" | "projects">
+> = {
   agent: "agents",
   model: "models",
   project: "projects",
@@ -22,11 +24,13 @@ export function BreakdownPage({
   dimension,
   title,
   nameLabel,
+  resultLabel,
 }: {
   filter: StatsFilter
   dimension: BreakdownDimension
   title: string
   nameLabel: string
+  resultLabel?: string
 }) {
   const navigate = useNavigate()
   const poll = usePoll(
@@ -71,7 +75,9 @@ export function BreakdownPage({
       </div>
       <BreakdownTable
         rows={poll.data}
+        dimension={dimension}
         nameLabel={nameLabel}
+        resultLabel={resultLabel}
         onSelect={select}
       />
     </div>
