@@ -72,8 +72,19 @@ function whereOf(
     params.push(...filter.models)
   }
   if (filter.projects?.length) {
-    clauses.push(`project IN (${filter.projects.map(() => "?").join(", ")})`)
-    params.push(...filter.projects)
+    const selected = new Set(filter.projects.map(canonicalProject))
+    // Older rows retain agent-specific paths even though the picker uses
+    // canonical keys. Include every stored alias for each selected project.
+    const stored = getDb()
+      .prepare(
+        "SELECT DISTINCT project FROM usage_events WHERE project IS NOT NULL"
+      )
+      .all() as { project: string }[]
+    const projects = stored
+      .filter((row) => selected.has(canonicalProject(row.project)))
+      .map((row) => row.project)
+    clauses.push(`project IN (${projects.map(() => "?").join(", ")})`)
+    params.push(...projects)
   }
   if (filter.agents?.length) {
     clauses.push(`agent IN (${filter.agents.map(() => "?").join(", ")})`)

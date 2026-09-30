@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -173,6 +173,36 @@ describe("analytics queries", () => {
       expect(Object.keys(session)).not.toContain("text")
       expect(Object.keys(session)).not.toContain("content")
     }
+  })
+
+  it("filters historical project aliases while preserving other filters", () => {
+    const project = join(dataDir, "roadmap-sync")
+    mkdirSync(project)
+    const encoded = project.replaceAll(/[:\\/]/gu, "-")
+    const db = getDb()
+    insertEvents(db, [
+      event({ id: "alias-claude", project, sessionId: "alias-a" }),
+      event({
+        id: "alias-codex",
+        project,
+        agent: "codex",
+        sessionId: "alias-b",
+      }),
+    ])
+    db.prepare("UPDATE usage_events SET project = ? WHERE id = ?").run(
+      encoded,
+      "alias-claude"
+    )
+    const rows = getBreakdown({ range: "all" }, "project")
+    const canonical = rows.find((row) => row.events === 2)!.key
+    const filter = { range: "all" as const, projects: [canonical] }
+    expect(getOverview(filter).events).toBe(2)
+    expect(getOverview({ ...filter, agents: ["codex"] }).events).toBe(1)
+    expect(getOverview({ ...filter, projects: [encoded] }).events).toBe(2)
+    expect(getOverview({ ...filter, models: ["missing"] }).events).toBe(0)
+    expect(
+      getOverview({ ...filter, projects: [canonical, "proj"] }).events
+    ).toBe(5)
   })
 
   it.each([
