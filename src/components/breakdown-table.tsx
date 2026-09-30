@@ -81,8 +81,14 @@ export function BreakdownTable({
     }
 
     if (dimension === "project") {
-      const maxRequests = Math.max(...rows.map((row) => row.events), 0)
-      const maxCost = Math.max(...rows.map((row) => row.pricedCostUsd), 0)
+      const maxRequests = rows.reduce(
+        (max, row) => Math.max(max, row.events),
+        0
+      )
+      const maxCost = rows.reduce(
+        (max, row) => Math.max(max, row.pricedCostUsd),
+        0
+      )
       return [
         labelColumn,
         {
@@ -111,7 +117,7 @@ export function BreakdownTable({
               max={maxCost}
               tone="cost"
             >
-              <CostCell row={row.original} showUnpriced={false} />
+              <CostCell row={row.original} />
             </RelativeMetricCell>
           ),
         },
@@ -434,24 +440,14 @@ function TokensCell({ row }: { row: BreakdownRow }) {
   return <span title={detail}>{formatTokens(row.tokens.total)}</span>
 }
 
-function CostCell({
-  row,
-  showUnpriced = true,
-}: {
-  row: BreakdownRow
-  showUnpriced?: boolean
-}) {
-  if (
-    showUnpriced &&
-    row.pricedCostUsd === 0 &&
-    row.unpricedEventCount === row.events
-  ) {
+function CostCell({ row }: { row: BreakdownRow }) {
+  if (row.pricedCostUsd === 0 && row.unpricedEventCount === row.events) {
     return <span className="text-muted-foreground">unpriced</span>
   }
   return (
     <span>
       {formatCost(row.pricedCostUsd)}
-      {showUnpriced && row.unpricedEventCount > 0 ? (
+      {row.unpricedEventCount > 0 ? (
         <span className="text-muted-foreground">
           {" "}
           +{formatCount(row.unpricedEventCount)} unpriced
