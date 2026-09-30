@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { closeDb, getDb, insertEvents } from "../db/client.server"
 import type { UsageEvent } from "../usage/types"
 import { filterFromUrl } from "./filter.server"
@@ -15,7 +15,7 @@ import {
 let dataDir: string
 
 const DAY = 24 * 60 * 60 * 1000
-const NOW = Date.now()
+const NOW = Date.UTC(2026, 7, 19, 12)
 
 function event(overrides: Partial<UsageEvent> & { id: string }): UsageEvent {
   return {
@@ -44,6 +44,8 @@ function event(overrides: Partial<UsageEvent> & { id: string }): UsageEvent {
 
 describe("analytics queries", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(NOW)
     dataDir = mkdtempSync(join(tmpdir(), "ts-queries-"))
     process.env.TELEMETRY_STATS_DATA_DIR = dataDir
     insertEvents(getDb(), [
@@ -64,13 +66,14 @@ describe("analytics queries", () => {
         estimatedTokens: true,
         costUsd: null,
         costSource: "unpriced",
-        timestamp: NOW - 100 * DAY,
+        timestamp: Date.UTC(2026, 4, 10, 12),
         localDate: "2026-05-10",
       }),
     ])
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     closeDb()
     rmSync(dataDir, { recursive: true, force: true })
   })
@@ -170,6 +173,39 @@ describe("analytics queries", () => {
       expect(Object.keys(session)).not.toContain("text")
       expect(Object.keys(session)).not.toContain("content")
     }
+  })
+
+  it.each([
+    { dates: "from=2026-05-01&to=2026-05-31", expected: 3 },
+    { dates: "from=2026-05-01", expected: 4 },
+    { dates: "to=2026-05-31", expected: 4 },
+  ])("honors inclusive date boundaries: $dates", ({ dates, expected }) => {
+    const project = "date-boundaries"
+    const timestamps = [
+      Date.UTC(2026, 4, 1) - 1,
+      Date.UTC(2026, 4, 1),
+      Date.UTC(2026, 4, 15, 12),
+      Date.UTC(2026, 5, 1) - 1,
+      Date.UTC(2026, 5, 1),
+    ]
+    insertEvents(
+      getDb(),
+      timestamps.map((timestamp, index) =>
+        event({
+          id: `boundary-${index}`,
+          project,
+          timestamp,
+          localDate: new Date(timestamp).toISOString().slice(0, 10),
+        })
+      )
+    )
+
+    const filter = filterFromUrl(
+      new URL(
+        `http://localhost/api/overview?range=24h&project=${project}&${dates}`
+      )
+    )
+    expect(getOverview(filter).events).toBe(expected)
   })
 
   it("parses URL filters with explicit dates overriding range", () => {
