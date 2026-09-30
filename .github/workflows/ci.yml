@@ -26,7 +26,8 @@ jobs:
         run: npm run test
 
   windows-projects:
-    runs-on: windows-latest
+    # Node 22's bundled node-gyp supports this image's Visual Studio 2022.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
